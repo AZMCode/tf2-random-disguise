@@ -2,9 +2,9 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
-#include <linux/cdev.h>
 #include <linux/random.h>
-#define DISGUISE_PATTERN "disguise 0 -1\nvoicemenu 2 1"
+#include <linux/miscdevice.h>
+#define DISGUISE_PATTERN "disguise 0 -1\nvoicemenu 2 1\n"
 
 
 MODULE_LICENSE("GPL");
@@ -37,45 +37,29 @@ ssize_t read_disguise(struct file* file_reading, char __user* user_buffer, size_
 };
 
 struct file_operations fops = {
-    .read = read_disguise
-};
-struct cdev cdev_cfg = {
-    .owner = THIS_MODULE,
-    .ops = &fops
+    .read = read_disguise,
+    .open = NULL
 };
 
-int majorNumber = -1;
-struct class* cls;
+struct miscdevice disg_dev_cfg = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .fops = &fops,
+    .name = "tf2d",
+    .mode = 444
+};
 
 
 static int __init init_disg_module(void){
-    int regResult;
-    printk(KERN_INFO "tf2-random-disguise kernel module loading");
-    
-
-    regResult = register_chrdev(0,"tf2d", &fops);
-    if(regResult < 0){
-        printk(KERN_ALERT "Registering device failed with %d.",regResult);
+    const int regResult = misc_register(&disg_dev_cfg);
+    if (regResult != 0) {
+        printk(KERN_INFO "Error %i registering TF2 disguise device",regResult);
         return -1;
     }
-    majorNumber = regResult;
-    cls = class_create(THIS_MODULE,"tf2d");
-    cdev_init(&cdev_cfg,&fops);
-    cdev_add(&cdev_cfg,0,1);
-    device_create(cls,NULL,MKDEV(majorNumber,0),NULL,"tf2d");
-    printk(KERN_INFO "tf2-random-disguise kernel module loaded\n");
     return 0;
 }
 
 static void __exit exit_disg_module(void){
-    if(majorNumber == -1){
-        printk(KERN_ALERT "Module could not remember major number");
-    }
-    device_destroy(cls, MKDEV(majorNumber, 0));
-    cdev_del(&cdev_cfg);
-    class_destroy(cls);
-    unregister_chrdev(majorNumber,"tf2d");
-    printk(KERN_INFO "Module unloaded and removed\n");
+    misc_deregister(&disg_dev_cfg);
 }
 module_init(init_disg_module);
 module_exit(exit_disg_module);
